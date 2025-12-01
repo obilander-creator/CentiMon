@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CentimOn - Mòbil (Accés Segur)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        /* Ajustos CSS per a una millor experiència tàctil i mòbil */
+        body { -webkit-tap-highlight-color: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        /* pb-safe és crucial per a la barra de navegació inferior en iOS */
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        .animate-fadeIn { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useMemo } from 'https://esm.sh/react@18.2.0';
+        import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
+        import { 
+            PieChart, Wallet, Users, TrendingUp, TrendingDown, Trash2, PlusCircle, 
+            LayoutDashboard, ArrowRightLeft, PiggyBank, Briefcase, Baby, Building2, 
+            CandlestickChart, Coins, Landmark, Percent, Menu, Sparkles, Bot, MessageSquare,
+            LogOut, Lock, Mail
+        } from 'https://esm.sh/lucide-react@0.344.0';
+        
+        // Importamos funciones de Auth específicas (Login/Registro/Logout)
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { 
+            getAuth, 
+            signInWithEmailAndPassword, 
+            createUserWithEmailAndPassword, 
+            signOut,
+            onAuthStateChanged, 
+            setPersistence, 
+            browserLocalPersistence 
+        } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { 
+            getFirestore, collection, query, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, setLogLevel 
+        } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        // --- ⚠️ CONFIGURACIÓN (VUELVE A PEGAR TUS CLAVES AQUÍ) ⚠️ ---
+        // PASO 1: Ve a Firebase Console > Project Settings > General > Your apps
+        // PASO 2: Copia el objeto firebaseConfig y pégalo abajo
+        const firebaseConfig = {
+  apiKey: "AIzaSyD2HSJ70uHQ1nB_ed1uR-YTEGPD4aYNyoY",
+  authDomain: "obifinance.firebaseapp.com",
+  projectId: "obifinance",
+  storageBucket: "obifinance.firebasestorage.app",
+  messagingSenderId: "298738778334",
+  appId: "1:298738778334:web:4c16ffcecf2a3ccbe4424f"        };
+        
+        // (Opcional) API Key de Google Gemini para la IA
+        const geminiApiKey = ""; 
+        // -----------------------------------------------------------
+
+        let app, db, auth;
+        try {
+            // Verificamos si el usuario ha configurado las claves
+            const hasConfig = Object.keys(firebaseConfig).length > 0 && firebaseConfig.apiKey && firebaseConfig.apiKey.length > 5;
+            if (hasConfig) {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                // Usamos persistencia LOCAL para que no pida login cada vez que refrescas la página
+                setPersistence(auth, browserLocalPersistence);
+                setLogLevel('silent');
+            }
+        } catch (e) { console.error("Error init:", e); }
+
+        // --- COMPONENTE DE LOGIN / REGISTRO ---
+        const AuthScreen = () => {
+            const [isLogin, setIsLogin] = useState(true);
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
+
+            const handleAuth = async (e) => {
+                e.preventDefault();
+                setError('');
+                setLoading(true);
+                // Si auth no está inicializado es porque falta la config
+                if (!auth) { setError("Falta configuración Firebase en el código."); setLoading(false); return; }
+
+                try {
+                    if (isLogin) {
+                        await signInWithEmailAndPassword(auth, email, password);
+                    } else {
+                        await createUserWithEmailAndPassword(auth, email, password);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    let msg = "Error desconegut";
+                    if (err.code === 'auth/invalid-credential') msg = "Credencials incorrectes.";
+                    if (err.code === 'auth/email-already-in-use') msg = "Aquest email ja està registrat.";
+                    if (err.code === 'auth/weak-password') msg = "La contrasenya ha de tenir mínim 6 caràcters.";
+                    if (err.code === 'auth/network-request-failed') msg = "Error de connexió. Revisa la teva xarxa.";
+                    setError(msg);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-500 to-purple-600">
+                    <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md animate-fadeIn">
+                        <div className="text-center mb-8">
+                            {/* Logo CentimOn en Login */}
+                            <div className="bg-indigo-100 p-3 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                                <Coins className="w-8 h-8 text-indigo-600" />
+                            </div>
+                            <h1 className="text-2xl font-bold text-gray-800">{isLogin ? 'Benvingut de nou' : 'Crear Compte'}</h1>
+                            <p className="text-sm text-gray-500 mt-2">Gestió Patrimonial CentimOn</p>
+                        </div>
+
+                        {error && (
+                            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 text-center border border-red-100">
+                                {error}
+                            </div>
+                        )}
+
+                        <form onSubmit={handleAuth} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Email</label>
+                                <div className="relative">
+                                    <Mail className="w-5 h-5 absolute left-3 top-3 text-gray-400" />
+                                    <input 
+                                        type="email" 
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                        placeholder="exemple@email.com"
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Contrasenya</label>
+                                <div className="relative">
+                                    <Lock className="w-5 h-5 absolute left-3 top-3 text-gray-400" />
+                                    <input 
+                                        type="password" 
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                        placeholder="••••••••"
+                                        required
+                                        minLength="6"
+                                    />
+                                </div>
+                            </div>
+                            <button 
+                                type="submit" 
+                                disabled={loading}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all transform active:scale-95 shadow-lg flex justify-center items-center"
+                            >
+                                {loading ? <span className="animate-pulse">Processant...</span> : (isLogin ? 'Iniciar Sessió' : 'Registrar-se')}
+                            </button>
+                        </form>
+
+                        <div className="mt-6 text-center">
+                            <button 
+                                onClick={() => { setIsLogin(!isLogin); setError(''); }}
+                                className="text-sm text-indigo-600 font-semibold hover:text-indigo-800 transition-colors"
+                            >
+                                {isLogin ? 'No tens compte? Registra\'t gratis' : 'Ja tens compte? Inicia sessió'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- CONSTANTES Y UTILS ---
+        const AccountTypes = { MAIN: 'main', SAVINGS: 'savings', INVEST: 'invest', JOINT: 'joint', DAUGHTER: 'daughter' };
+        const AssetClasses = { CASH: 'cash', ETF: 'etf', STOCK: 'stock', CRYPTO: 'crypto' };
+        const AccountConfig = {
+            [AccountTypes.MAIN]: { label: 'Principal', icon: Wallet, color: 'text-indigo-600', bg: 'bg-indigo-100' },
+            [AccountTypes.SAVINGS]: { label: 'Estalvi', icon: PiggyBank, color: 'text-emerald-600', bg: 'bg-emerald-100' },
+            [AccountTypes.INVEST]: { label: 'Inversió', icon: CandlestickChart, color: 'text-blue-600', bg: 'bg-blue-100' },
+            [AccountTypes.JOINT]: { label: 'Comú', icon: Users, color: 'text-pink-600', bg: 'bg-pink-100' },
+            [AccountTypes.DAUGHTER]: { label: 'Filla', icon: Baby, color: 'text-purple-600', bg: 'bg-purple-100' },
+        };
+        const AssetConfig = {
+            [AssetClasses.CASH]: { label: 'Efectiu', icon: Landmark, color: '#60A5FA' }, 
+            [AssetClasses.ETF]: { label: 'Fons', icon: PieChart, color: '#F59E0B' }, 
+            [AssetClasses.STOCK]: { label: 'Accions', icon: Building2, color: '#3B82F6' }, 
+            [AssetClasses.CRYPTO]: { label: 'Cripto', icon: Coins, color: '#F472B6' }, 
+        };
+        const TxType = { INCOME: 'income', EXPENSE: 'expense', TRANSFER_OUT: 'transfer_out', TRANSFER_IN: 'transfer_in', INVEST_BUY: 'invest_buy', INVEST_SELL: 'invest_sell', INVEST_YIELD: 'invest_yield' };
+        const FormTxOptions = { EXPENSE: 'Despesa', INCOME: 'Ingrés', TRANSFER: 'Traspàs' };
+        const InvestTxOptions = { BUY: 'Comprar', SELL: 'Vendre', YIELD: 'Dividend', DEPOSIT: 'Ingrés', WITHDRAW: 'Retirada' };
+        const CATEGORIES = {
+            [TxType.EXPENSE]: [{ id: 'food', label: 'Alimentació', color: '#EF4444' }, { id: 'housing', label: 'Habitatge', color: '#F97316' }, { id: 'transport', label: 'Transport', color: '#EAB308' }, { id: 'leisure', label: 'Oci', color: '#8B5CF6' }, { id: 'health', label: 'Salut', color: '#EC4899' }, { id: 'bills', label: 'Subministraments', color: '#6366F1' }, { id: 'shopping', label: 'Compres', color: '#14B8A6' }, { id: 'other_expense', label: 'Altres', color: '#64748B' }],
+            [TxType.INCOME]: [{ id: 'salary', label: 'Nòmina', color: '#22C55E' }, { id: 'freelance', label: 'Autònom', color: '#84CC16' }, { id: 'investments', label: 'Rendiments', color: '#06B6D4' }, { id: 'gifts', label: 'Regals', color: '#A855F7' }, { id: 'other_income', label: 'Altres', color: '#94A3B8' }]
+        };
+
+        const callGemini = async (prompt, systemInstruction = "") => {
+            if (!geminiApiKey) { alert("Configura la API Key de Gemini."); return null; }
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: systemInstruction }] }, generationConfig: { responseMimeType: "application/json" } })
+                });
+                if (!response.ok) throw new Error("Error Gemini");
+                const data = await response.json();
+                return JSON.parse(data.candidates[0].content.parts[0].text);
+            } catch (error) { console.error("Gemini Error:", error); return null; }
+        };
+
+        const callGeminiText = async (prompt) => {
+            if (!geminiApiKey) { alert("Configura la API Key de Gemini."); return null; }
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                if (!response.ok) throw new Error("Error Gemini");
+                const data = await response.json();
+                return data.candidates[0].content.parts[0].text;
+            } catch (error) { console.error("Gemini Error:", error); return null; }
+        };
+
+        const DonutChart = ({ data, total, title, centerLabel }) => {
+            if (total === 0) return <div className="h-40 w-40 flex items-center justify-center text-gray-400 bg-gray-50 rounded-full border-4 border-gray-100 mx-auto"><span className="text-xs">Buit</span></div>;
+            let cumulativePercent = 0;
+            const slices = data.map((slice) => {
+                const startPercent = cumulativePercent; const slicePercent = slice.value / total; cumulativePercent += slicePercent; const endPercent = cumulativePercent;
+                const x1 = Math.cos(2 * Math.PI * startPercent); const y1 = Math.sin(2 * Math.PI * startPercent);
+                const x2 = Math.cos(2 * Math.PI * endPercent); const y2 = Math.sin(2 * Math.PI * endPercent);
+                const largeArcFlag = slicePercent > 0.5 ? 1 : 0;
+                const pathData = `M ${x1} ${y1} A 1 1 0 ${largeArcFlag} 1 ${x2} ${y2} L 0 0`;
+                return <path key={slice.id} d={pathData} fill={slice.color} className="transition-opacity hover:opacity-80" />;
+            });
+            return <div className="relative w-40 h-40 mx-auto"><svg viewBox="-1 -1 2 2" className="transform -rotate-90 w-full h-full">{slices}</svg><div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="w-24 h-24 bg-white rounded-full flex flex-col items-center justify-center shadow-sm"><span className="text-[10px] text-gray-400 uppercase">{title || 'Total'}</span><span className="text-sm font-bold text-gray-700">{centerLabel || `${Math.abs(total).toFixed(0)}€`}</span></div></div></div>;
+        };
+
+        const MobileNavBar = ({ activeAccount, setActiveAccount }) => (
+            <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 pb-safe pt-2 px-2 flex justify-between items-center z-50 md:hidden h-[70px] pb-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                {Object.entries(AccountConfig).map(([key, config]) => {
+                    const Icon = config.icon;
+                    return <button key={key} onClick={() => setActiveAccount(key)} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeAccount === key ? 'text-indigo-600' : 'text-gray-400'}`}><div className={`p-1 rounded-lg ${activeAccount === key ? 'bg-indigo-50' : ''}`}><Icon className={`w-5 h-5 ${activeAccount === key ? 'stroke-2' : 'stroke-1'}`} /></div><span className="text-[10px] font-medium truncate w-full text-center px-1">{config.label}</span></button>;
+                })}
+            </div>
+        );
+
+        const DesktopAccountSelector = ({ activeAccount, setActiveAccount }) => (
+            <div className="hidden md:flex overflow-x-auto pb-4 gap-3 no-scrollbar mb-6">{Object.entries(AccountConfig).map(([key, config]) => { const Icon = config.icon; return <button key={key} onClick={() => setActiveAccount(key)} className={`flex-shrink-0 flex flex-col items-center p-3 rounded-xl border transition-all duration-200 min-w-[100px] ${activeAccount === key ? 'bg-white border-indigo-500 shadow-md transform scale-105 ring-1 ring-indigo-500' : 'bg-gray-50 border-gray-200 hover:bg-white hover:border-gray-300'}`}><div className={`p-2 rounded-full mb-2 ${config.bg}`}><Icon className={`w-5 h-5 ${config.color}`} /></div><span className={`text-xs font-medium text-center ${activeAccount === key ? 'text-gray-800' : 'text-gray-500'}`}>{config.label}</span></button>; })}</div>
+        );
+
+        const SummaryDashboard = ({ transactions, activeAccount }) => {
+            const isInvest = activeAccount === AccountTypes.INVEST;
+            const data = useMemo(() => {
+                let stats = { netWorth: 0, savingsTotal: 0, activeBalance: 0, monthlyIncome: 0, monthlyExpense: 0, investCash: 0, investAssets: 0 };
+                const savingAccounts = [AccountTypes.SAVINGS, AccountTypes.INVEST, AccountTypes.DAUGHTER];
+                transactions.forEach(t => {
+                    let amountForNetWorth = t.amount; if (t.type === TxType.INVEST_BUY || t.type === TxType.INVEST_SELL) amountForNetWorth = 0;
+                    stats.netWorth += amountForNetWorth; if (savingAccounts.includes(t.account)) stats.savingsTotal += amountForNetWorth;
+                    if (t.account === activeAccount) {
+                        if (t.type !== TxType.INVEST_BUY && t.type !== TxType.INVEST_SELL) stats.activeBalance += t.amount;
+                        if (t.type === TxType.INCOME || t.type === TxType.INVEST_YIELD) stats.monthlyIncome += t.amount;
+                        if (t.type === TxType.EXPENSE) stats.monthlyExpense += t.amount;
+                        if (activeAccount === AccountTypes.INVEST) { if (t.type === TxType.INVEST_BUY) { stats.investCash -= Math.abs(t.assetAmount || 0); stats.investAssets += Math.abs(t.assetAmount || 0); } else if (t.type === TxType.INVEST_SELL) { stats.investCash += Math.abs(t.assetAmount || 0); stats.investAssets -= Math.abs(t.assetAmount || 0); } else { stats.investCash += t.amount; } }
+                    }
+                });
+                stats.investTotal = stats.investCash + stats.investAssets; if (activeAccount === AccountTypes.INVEST) stats.activeBalance = stats.investTotal;
+                return stats;
+            }, [transactions, activeAccount]);
+            const activeConfig = AccountConfig[activeAccount];
+            return (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-indigo-50 relative overflow-hidden">
+                        <div className="relative z-10">
+                            <div className="flex justify-between items-start"><p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-1">{isInvest ? 'Total Inversió' : `Saldo ${activeConfig.label}`}</p><div className={`md:hidden px-2 py-0.5 rounded-full text-[10px] font-bold ${activeConfig.bg} ${activeConfig.color}`}>{activeConfig.label}</div></div>
+                            <h2 className="text-3xl font-extrabold text-gray-800 tracking-tight">{data.activeBalance.toFixed(2)} €</h2>
+                            {isInvest ? (<div className="mt-3 flex space-x-4 text-xs"><div className="flex items-center text-blue-600 font-medium"><Landmark className="w-3 h-3 mr-1" />{data.investCash.toFixed(0)}€</div><div className="flex items-center text-amber-600 font-medium"><TrendingUp className="w-3 h-3 mr-1" />{data.investAssets.toFixed(0)}€</div></div>) : (<div className="flex items-center mt-3 text-xs space-x-3"><span className="text-green-600 flex items-center bg-green-50 px-2 py-1 rounded font-medium"><TrendingUp className="w-3 h-3 mr-1" /> +{data.monthlyIncome.toFixed(0)}€</span><span className="text-red-500 flex items-center bg-red-50 px-2 py-1 rounded font-medium"><TrendingDown className="w-3 h-3 mr-1" /> {data.monthlyExpense.toFixed(0)}€</span></div>)}
+                        </div>
+                    </div>
+                    <div className="bg-gray-900 p-5 rounded-2xl shadow-md text-white flex flex-col justify-center"><p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider mb-1">Patrimoni Total</p><h2 className="text-2xl font-bold">{data.netWorth.toFixed(2)} €</h2><div className="w-full bg-gray-700 h-1.5 mt-3 rounded-full overflow-hidden"><div className="bg-emerald-400 h-full" style={{ width: `${Math.min((data.savingsTotal/(data.netWorth||1))*100, 100)}%` }}></div></div><p className="text-[10px] text-gray-400 mt-1 text-right">{((data.savingsTotal / (data.netWorth || 1)) * 100).toFixed(0)}% Estalviat</p></div>
+                </div>
+            );
+        };
+
+        const TransactionForm = ({ db, userId, activeAccount }) => {
+            const isInvest = activeAccount === AccountTypes.INVEST;
+            const [description, setDescription] = useState('');
+            const [amount, setAmount] = useState('');
+            const [formType, setFormType] = useState(FormTxOptions.EXPENSE);
+            const [category, setCategory] = useState('');
+            const [targetAccount, setTargetAccount] = useState(AccountTypes.SAVINGS);
+            const [investType, setInvestType] = useState(InvestTxOptions.BUY);
+            const [assetClass, setAssetClass] = useState(AssetClasses.ETF);
+            const [loading, setLoading] = useState(false);
+            const [isExpanded, setIsExpanded] = useState(false);
+            const [isAIMode, setIsAIMode] = useState(false);
+            const [aiInput, setAiInput] = useState('');
+            const [aiLoading, setAiLoading] = useState(false);
+
+            useEffect(() => { if (isInvest) { setInvestType(InvestTxOptions.BUY); setAssetClass(AssetClasses.ETF); } else { setFormType(FormTxOptions.EXPENSE); setCategory(CATEGORIES[TxType.EXPENSE][0].id); } }, [activeAccount, isInvest]);
+            const handleAIParse = async () => { if (!aiInput.trim()) return; setAiLoading(true); const catList = [...CATEGORIES[TxType.EXPENSE], ...CATEGORIES[TxType.INCOME]].map(c => c.id).join(", "); const systemPrompt = `You are a finance assistant. Parse the text into JSON with keys: "description" (string), "amount" (number, positive), "type" (one of: 'expense', 'income'), "category" (one of: ${catList}). Detect language automatically.`; const result = await callGemini(aiInput, systemPrompt); if (result) { setDescription(result.description || aiInput); setAmount(result.amount ? result.amount.toString() : ''); if (result.type === 'income') setFormType(FormTxOptions.INCOME); else setFormType(FormTxOptions.EXPENSE); if (result.category) setCategory(result.category); setIsAIMode(false); setAiInput(''); } setAiLoading(false); };
+            const handleSubmit = async (e) => { e.preventDefault(); if (!userId || !amount) return; setLoading(true); try { const numAmount = parseFloat(amount); const collectionRef = collection(db, `users/${userId}/finances`); const baseData = { description: description.trim(), timestamp: serverTimestamp(), account: activeAccount }; if (isInvest) { let txData = { ...baseData }; if (investType === InvestTxOptions.BUY) { txData.type = TxType.INVEST_BUY; txData.amount = 0; txData.assetAmount = numAmount; txData.assetClass = assetClass; txData.description = `Compra ${AssetConfig[assetClass].label}: ${description}`; } else if (investType === InvestTxOptions.SELL) { txData.type = TxType.INVEST_SELL; txData.amount = 0; txData.assetAmount = numAmount; txData.assetClass = assetClass; txData.description = `Venda ${AssetConfig[assetClass].label}: ${description}`; } else if (investType === InvestTxOptions.YIELD) { txData.type = TxType.INVEST_YIELD; txData.amount = numAmount; txData.category = 'yield'; } else if (investType === InvestTxOptions.DEPOSIT) { txData.type = TxType.TRANSFER_IN; txData.amount = numAmount; } await addDoc(collectionRef, txData); } else { if (formType === FormTxOptions.TRANSFER) { await addDoc(collectionRef, { ...baseData, description: `Traspàs a ${AccountConfig[targetAccount].label}: ${description}`, amount: -numAmount, type: TxType.TRANSFER_OUT, relatedAccount: targetAccount }); await addDoc(collectionRef, { description: `Rebut de ${AccountConfig[activeAccount].label}: ${description}`, amount: numAmount, type: TxType.TRANSFER_IN, account: targetAccount, relatedAccount: activeAccount, timestamp: serverTimestamp() }); } else { const realType = formType === FormTxOptions.EXPENSE ? TxType.EXPENSE : TxType.INCOME; await addDoc(collectionRef, { ...baseData, amount: realType === TxType.EXPENSE ? -numAmount : numAmount, type: realType, category: category }); } } setDescription(''); setAmount(''); setIsExpanded(false); } catch (err) { console.error(err); alert("Error guardant: " + err.message); } finally { setLoading(false); } };
+
+            return (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-6 overflow-hidden transition-all">
+                    <button onClick={() => setIsExpanded(!isExpanded)} className="w-full p-4 flex items-center justify-between bg-white hover:bg-gray-50 transition"><div className="flex items-center text-sm font-bold text-gray-800 uppercase tracking-wide"><PlusCircle className="w-5 h-5 mr-2 text-indigo-600" />{isInvest ? 'Operar' : 'Afegir'}</div><div className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}><ArrowRightLeft className="w-5 h-5 text-gray-400 rotate-90" /></div></button>
+                    <div className={`${isExpanded ? 'block' : 'hidden'} px-4 pb-6 border-t border-gray-100`}>
+                        {!isInvest && (<div className="flex justify-end mt-2 mb-2"><button type="button" onClick={() => setIsAIMode(!isAIMode)} className={`flex items-center text-xs px-3 py-1.5 rounded-full transition-all border ${isAIMode ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white text-gray-500 border-gray-200'}`}><Sparkles className="w-3 h-3 mr-1" />{isAIMode ? 'Mode Intel·ligent' : 'Activar AI'}</button></div>)}
+                        {isAIMode && !isInvest ? (<div className="space-y-3 mt-2 bg-indigo-50 p-4 rounded-xl border border-indigo-100"><label className="block text-xs font-bold text-indigo-800 uppercase tracking-wide">Descriu la transacció</label><textarea value={aiInput} onChange={(e) => setAiInput(e.target.value)} placeholder="Ex: Sopar amb la Maria 45 euros..." className="w-full p-3 border border-indigo-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white" rows="2" /><button onClick={handleAIParse} disabled={aiLoading || !aiInput.trim()} className="w-full bg-indigo-600 text-white font-bold py-2 rounded-lg text-sm shadow-md flex justify-center items-center">{aiLoading ? <span className="animate-pulse">Pensant...</span> : <><Sparkles className="w-4 h-4 mr-2" />Generar Dades</>}</button></div>) : (<form onSubmit={handleSubmit} className="space-y-4 mt-2"><div className="flex bg-gray-100 p-1 rounded-xl overflow-x-auto no-scrollbar">{(isInvest ? Object.values(InvestTxOptions) : Object.values(FormTxOptions)).map((opt) => (<button key={opt} type="button" onClick={() => isInvest ? setInvestType(opt) : setFormType(opt)} className={`flex-1 py-2 px-3 text-xs font-semibold rounded-lg transition-all whitespace-nowrap ${(isInvest ? investType : formType) === opt ? 'bg-white shadow-sm text-indigo-600 ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700'}`}>{opt}</button>))}</div><div className="space-y-3"><input type="number" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-lg font-semibold placeholder-gray-300 outline-none" placeholder="0.00 €" required /><input type="text" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-3 border border-gray-200 rounded-xl text-base placeholder-gray-400 outline-none" placeholder={isInvest ? "Detall..." : "Concepte..."} required /></div>{isInvest && (investType === InvestTxOptions.BUY || investType === InvestTxOptions.SELL) && (<div className="grid grid-cols-4 gap-2">{Object.entries(AssetConfig).filter(([k]) => k !== AssetClasses.CASH).map(([key, config]) => (<button key={key} type="button" onClick={() => setAssetClass(key)} className={`p-2 flex flex-col items-center justify-center rounded-xl border transition-all ${assetClass === key ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-gray-100 text-gray-500 bg-gray-50'}`}><config.icon className="w-5 h-5 mb-1" /><span className="text-[10px] font-medium">{config.label}</span></button>))}</div>)}{!isInvest && formType === FormTxOptions.TRANSFER && (<div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100"><label className="text-xs font-bold text-indigo-800 mb-2 flex items-center uppercase"><ArrowRightLeft className="w-3 h-3 mr-1" /> Destí</label><select value={targetAccount} onChange={(e) => setTargetAccount(e.target.value)} className="w-full p-2 border border-indigo-200 rounded-lg text-sm bg-white outline-none">{Object.entries(AccountConfig).filter(([key]) => key !== activeAccount).map(([key, config]) => (<option key={key} value={key}>{config.label}</option>))}</select></div>)}{!isInvest && formType !== FormTxOptions.TRANSFER && (<div className="grid grid-cols-4 gap-2">{CATEGORIES[formType === FormTxOptions.EXPENSE ? TxType.EXPENSE : TxType.INCOME]?.map((cat) => (<button key={cat.id} type="button" onClick={() => setCategory(cat.id)} className={`p-2 flex flex-col items-center justify-center rounded-xl border transition-all h-16 ${category === cat.id ? 'bg-gray-800 border-gray-800 text-white shadow-md' : 'border-gray-100 text-gray-500 bg-gray-50'}`}><div className={`w-2 h-2 rounded-full mb-1 ${category === cat.id ? 'bg-white' : ''}`} style={{ backgroundColor: category === cat.id ? '' : cat.color }}></div><span className="text-[9px] font-medium text-center leading-tight">{cat.label}</span></button>))}</div>)}<button type="submit" disabled={loading} className={`w-full text-white font-bold py-3.5 rounded-xl shadow-lg active:scale-95 transition-transform ${isInvest ? 'bg-blue-600' : 'bg-indigo-600'}`}>{loading ? '...' : 'Guardar'}</button></form>)}
+                    </div>
+                </div>
+            );
+        };
+
+        const TransactionsList = ({ transactions, db, userId }) => {
+            const handleDelete = async (id) => { if (!confirm('Eliminar?')) return; try { await deleteDoc(doc(db, `users/${userId}/finances`, id)); } catch (error) { console.error(error); } };
+            const getLabel = (t) => { if (t.type === TxType.INVEST_BUY || t.type === TxType.INVEST_SELL) return AssetConfig[t.assetClass]?.label || 'Actiu'; if (t.type === TxType.INVEST_YIELD) return 'Rendiment'; if (t.type.includes('transfer')) return 'Traspàs'; const cats = t.type === TxType.EXPENSE ? CATEGORIES[TxType.EXPENSE] : CATEGORIES[TxType.INCOME]; return cats?.find(c => c.id === t.category)?.label || 'General'; };
+            return (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-20 md:mb-0">
+                    <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center"><h3 className="font-bold text-gray-700 text-sm uppercase tracking-wide">Moviments</h3></div>
+                    <div className="divide-y divide-gray-100">{transactions.length === 0 ? <div className="p-8 text-center text-gray-400 text-sm">Buit</div> : transactions.map((t) => { const isInvestOp = t.type.startsWith('invest'), isPositive = t.amount > 0, isBuy = t.type === TxType.INVEST_BUY; return (<div key={t.id} className="p-4 flex items-center justify-between active:bg-gray-50"><div className="flex items-center space-x-3"><div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isInvestOp ? 'bg-blue-100 text-blue-600' : isPositive ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{isInvestOp ? <CandlestickChart className="w-5 h-5" /> : isPositive ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}</div><div className="min-w-0"><p className="font-semibold text-gray-800 text-sm truncate pr-2">{t.description}</p><div className="flex items-center text-xs text-gray-500 space-x-2"><span>{t.timestamp?.toDate ? t.timestamp.toDate().toLocaleDateString('ca-ES', {day: '2-digit', month: '2-digit'}) : '--/--'}</span><span className="px-1.5 py-0.5 rounded-md bg-gray-100 text-[10px] font-medium uppercase tracking-wide">{getLabel(t)}</span></div></div></div><div className="flex flex-col items-end pl-2"><span className={`font-bold text-sm ${isInvestOp ? 'text-blue-800' : isPositive ? 'text-green-600' : 'text-gray-800'}`}>{isBuy ? `+${t.assetAmount}€` : t.amount !== 0 ? `${t.amount > 0 ? '+' : ''}${t.amount.toFixed(2)} €` : `-${t.assetAmount}€`}</span><button onClick={() => handleDelete(t.id)} className="text-gray-300 p-1 -mr-1"><Trash2 className="w-4 h-4" /></button></div></div>); })}</div>
+                </div>
+            );
+        };
+
+        const AIAdvisor = ({ transactions }) => {
+            const [advice, setAdvice] = useState(''), [loading, setLoading] = useState(false);
+            const handleGetAdvice = async () => { setLoading(true); const summary = transactions.slice(0, 30).map(t => `${t.type === 'expense' ? 'Despesa' : 'Ingrés'}: ${t.amount}€ (${t.description || 'Sense descripció'})`).join("\n"); const prompt = `Actua com un assessor financer expert. Analitza aquestes dades: \n${summary}\n. Dóna 2 consells concrets en Català.`; const result = await callGeminiText(prompt); setAdvice(result); setLoading(false); };
+            return (
+                <div className="bg-gradient-to-br from-indigo-900 to-purple-900 rounded-2xl shadow-lg p-5 text-white mb-6 relative overflow-hidden">
+                    <div className="relative z-10"><h3 className="flex items-center font-bold text-lg mb-2"><Bot className="w-5 h-5 mr-2 text-indigo-200" />Assessor Financer IA</h3>{!advice ? (<div className="space-y-3"><p className="text-indigo-200 text-sm">Vols que Gemini analitzi els teus últims moviments?</p><button onClick={handleGetAdvice} disabled={loading || transactions.length === 0} className="bg-white text-indigo-900 font-bold py-2 px-4 rounded-lg text-sm shadow hover:bg-indigo-50 transition-colors flex items-center">{loading ? <span className="animate-pulse">Analitzant dades...</span> : <><Sparkles className="w-4 h-4 mr-2" />Demanar Consell</>}</button></div>) : (<div className="animate-fadeIn"><div className="bg-white/10 p-4 rounded-xl text-sm leading-relaxed backdrop-blur-sm border border-white/20"><MessageSquareQuote className="w-6 h-6 text-indigo-300 mb-2 opacity-50" />{advice}</div><button onClick={() => setAdvice('')} className="text-xs text-indigo-300 mt-3 hover:text-white underline">Tancar consell</button></div>)}</div>
+                </div>
+            );
+        };
+
+        const Analytics = ({ transactions, activeAccount }) => {
+            const isInvest = activeAccount === AccountTypes.INVEST;
+            const data = useMemo(() => {
+                if (isInvest) { let portfolio = { [AssetClasses.CASH]: 0, [AssetClasses.ETF]: 0, [AssetClasses.STOCK]: 0, [AssetClasses.CRYPTO]: 0 }; transactions.forEach(t => { if (t.type === TxType.INVEST_BUY) { portfolio[AssetClasses.CASH] -= t.assetAmount; portfolio[t.assetClass] = (portfolio[t.assetClass] || 0) + t.assetAmount; } else if (t.type === TxType.INVEST_SELL) { portfolio[AssetClasses.CASH] += t.assetAmount; portfolio[t.assetClass] = (portfolio[t.assetClass] || 0) - t.assetAmount; } else { portfolio[AssetClasses.CASH] += t.amount; } }); const chartData = Object.entries(portfolio).map(([key, value]) => ({ id: key, label: AssetConfig[key].label, value: value, color: AssetConfig[key].color })).filter(d => d.value > 0); return { data: chartData, total: chartData.reduce((s, i) => s + i.value, 0) }; }
+                else { const grouped = transactions.filter(t => t.type === TxType.EXPENSE).reduce((acc, curr) => { const cat = curr.category || 'other_expense'; acc[cat] = (acc[cat] || 0) + Math.abs(curr.amount); return acc; }, {}); const chartData = Object.keys(grouped).map(k => { const def = CATEGORIES[TxType.EXPENSE].find(c => c.id === k); return { id: k, label: def?.label || k, value: grouped[k], color: def?.color || '#ccc' }; }).sort((a,b) => b.value - a.value); return { data: chartData, total: chartData.reduce((s, i) => s + i.value, 0) }; }
+            }, [transactions, isInvest]);
+            return (
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100"><h3 className="text-xs font-bold text-gray-500 mb-4 uppercase tracking-wide text-center">{isInvest ? 'Distribució' : 'Despeses'}</h3><DonutChart data={data.data} total={data.total} title={isInvest ? 'Valor' : 'Total'} /><div className="mt-4 grid grid-cols-2 gap-2">{data.data.slice(0,6).map(d => (<div key={d.id} className="flex items-center text-[10px] bg-gray-50 p-2 rounded-lg"><span className="w-2 h-2 rounded-full mr-2 shrink-0" style={{backgroundColor: d.color}}></span><span className="truncate flex-1">{d.label}</span><span className="font-bold">{d.value.toFixed(0)}€</span></div>))}</div></div>
+            );
+        };
+
+        // --- APP PRINCIPAL ---
+        function App() {
+            const [user, setUser] = useState(null);
+            const [transactions, setTransactions] = useState([]);
+            const [activeAccount, setActiveAccount] = useState(AccountTypes.MAIN);
+            const [authLoading, setAuthLoading] = useState(true);
+
+            useEffect(() => {
+                if (!auth) {
+                    // Si 'auth' no se inicializa (por un posible bloqueo de CORS/red), 
+                    // forzamos a que el estado de carga acabe para mostrar el login.
+                    const timer = setTimeout(() => setAuthLoading(false), 500);
+                    return () => clearTimeout(timer);
+                }
+                const unsub = onAuthStateChanged(auth, (currentUser) => {
+                    setUser(currentUser);
+                    setAuthLoading(false);
+                });
+                return () => unsub();
+            }, []);
+
+            useEffect(() => {
+                if (!user || !db) { setTransactions([]); return; }
+                const q = query(collection(db, `users/${user.uid}/finances`));
+                const unsub = onSnapshot(q, (snap) => {
+                    const txs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+                    setTransactions(txs);
+                }, (err) => console.error(err));
+                return () => unsub();
+            }, [user]);
+
+            const activeTransactions = useMemo(() => transactions.filter(t => t.account === activeAccount), [transactions, activeAccount]);
+
+            if (!Object.keys(firebaseConfig).length || !firebaseConfig.apiKey || firebaseConfig.apiKey.length < 5) {
+                return <div className="h-screen flex items-center justify-center p-8 text-center text-red-600 bg-red-50 font-bold">Error: Falta la configuración de Firebase en el código.</div>;
+            }
+
+            if (authLoading) return <div className="h-screen flex items-center justify-center text-gray-400 bg-gray-50 animate-pulse">Carregant...</div>;
+            if (!user) return <AuthScreen />;
+
+            return (
+                <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-safe">
+                    <div className="max-w-6xl mx-auto p-4 md:p-6 pb-24 md:pb-6">
+                        <header className="hidden md:flex justify-between items-center mb-8">
+                            <div className="flex items-center space-x-3">
+                                <div className="bg-indigo-600 p-2 rounded-lg shadow-lg shadow-indigo-200">
+                                    {/* Logo CentimOn en Desktop */}
+                                    <Coins className="text-white w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-bold leading-tight">CentimOn</h1>
+                                    <p className="text-xs text-gray-400">Gestió Patrimonial Intel·ligent</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <span className="text-xs text-gray-500">{user.email}</span>
+                                <button onClick={() => signOut(auth)} className="flex items-center text-sm font-bold text-gray-600 hover:text-red-500 transition-colors"><LogOut className="w-4 h-4 mr-2" /> Sortir</button>
+                            </div>
+                        </header>
+                        <header className="md:hidden flex justify-between items-center mb-6 pt-2">
+                            {/* Logo CentimOn en Mobile */}
+                            <h1 className="text-xl font-extrabold text-gray-900">CentimOn</h1>
+                            <button onClick={() => signOut(auth)} className="p-2 text-gray-600"><LogOut className="w-5 h-5" /></button>
+                        </header>
+                        
+                        <DesktopAccountSelector activeAccount={activeAccount} setActiveAccount={setActiveAccount} />
+                        <SummaryDashboard transactions={transactions} activeAccount={activeAccount} />
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div className="lg:col-span-2 space-y-6">
+                                <TransactionForm db={db} userId={user.uid} activeAccount={activeAccount} />
+                                <TransactionsList transactions={activeTransactions} db={db} userId={user.uid} />
+                            </div>
+                            <div className="space-y-6">
+                                <AIAdvisor transactions={activeTransactions} />
+                                <Analytics transactions={activeTransactions} activeAccount={activeAccount} />
+                            </div>
+                        </div>
+                    </div>
+                    <MobileNavBar activeAccount={activeAccount} setActiveAccount={setActiveAccount} />
+                </div>
+            );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
