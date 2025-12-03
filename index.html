@@ -33,7 +33,7 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { 
             getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut,
-            onAuthStateChanged, setPersistence, browserLocalPersistence 
+            onAuthStateChanged, setPersistence, browserLocalPersistence, sendPasswordResetEmail 
         } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import { 
             getFirestore, collection, query, onSnapshot, addDoc, serverTimestamp, deleteDoc, doc, setLogLevel, setDoc, getDoc 
@@ -122,20 +122,40 @@
 
         const AuthScreen = () => {
             const [isLogin, setIsLogin] = useState(true);
+            const [isReset, setIsReset] = useState(false); // Estat per "He oblidat contrasenya"
             const [email, setEmail] = useState('');
             const [password, setPassword] = useState('');
             const [error, setError] = useState('');
+            const [message, setMessage] = useState(''); // Missatge d'èxit
             const [loading, setLoading] = useState(false);
 
             const handleAuth = async (e) => {
                 e.preventDefault();
                 setError('');
+                setMessage('');
                 setLoading(true);
                 if (!auth) { setError("Falta config Firebase."); setLoading(false); return; }
                 try {
+                    if (isReset) {
+                         // Lògica per recuperar contrasenya
+                         await sendPasswordResetEmail(auth, email);
+                         setMessage("Correu de recuperació enviat. Revisa la teva safata d'entrada.");
+                         setLoading(false);
+                         return;
+                    }
+
                     if (isLogin) await signInWithEmailAndPassword(auth, email, password);
                     else await createUserWithEmailAndPassword(auth, email, password);
-                } catch (err) { setError(err.message); } 
+                } catch (err) { 
+                    console.error(err);
+                    let msg = "Error desconegut";
+                    if (err.code === 'auth/invalid-credential') msg = "Credencials incorrectes.";
+                    if (err.code === 'auth/user-not-found') msg = "Usuari no trobat.";
+                    if (err.code === 'auth/wrong-password') msg = "Contrasenya incorrecta.";
+                    if (err.code === 'auth/email-already-in-use') msg = "Aquest email ja està registrat.";
+                    if (err.code === 'auth/weak-password') msg = "La contrasenya ha de tenir mínim 6 caràcters.";
+                    setError(msg); 
+                } 
                 finally { setLoading(false); }
             };
 
@@ -144,16 +164,41 @@
                     <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md animate-fadeIn">
                         <div className="text-center mb-8">
                             <div className="bg-indigo-100 p-3 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4"><Coins className="w-8 h-8 text-indigo-600" /></div>
-                            <h1 className="text-2xl font-bold text-gray-800">{isLogin ? 'Benvingut' : 'Crear Compte'}</h1>
+                            <h1 className="text-2xl font-bold text-gray-800">
+                                {isReset ? 'Recuperar Contrasenya' : (isLogin ? 'Benvingut' : 'Crear Compte')}
+                            </h1>
                             <p className="text-sm text-gray-500 mt-2">CentimOn</p>
                         </div>
+                        
                         {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4">{error}</div>}
+                        {message && <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm mb-4">{message}</div>}
+                        
                         <form onSubmit={handleAuth} className="space-y-4">
                             <input type="email" value={email} onChange={e=>setEmail(e.target.value)} className="w-full p-3 border rounded-xl" placeholder="Email" required />
-                            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-3 border rounded-xl" placeholder="Contrasenya" required />
-                            <button type="submit" disabled={loading} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl">{loading ? '...' : (isLogin ? 'Entrar' : 'Registrar')}</button>
+                            
+                            {!isReset && (
+                                <input type="password" value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-3 border rounded-xl" placeholder="Contrasenya" required />
+                            )}
+                            
+                            <button type="submit" disabled={loading} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl">
+                                {loading ? '...' : (isReset ? 'Enviar Correu' : (isLogin ? 'Entrar' : 'Registrar'))}
+                            </button>
                         </form>
-                        <button onClick={()=>setIsLogin(!isLogin)} className="w-full mt-4 text-sm text-indigo-600 hover:underline">{isLogin ? 'Crear compte' : 'Ja tinc compte'}</button>
+
+                        {!isReset && (
+                            <div className="text-center mt-3">
+                                <button onClick={() => { setIsReset(true); setError(''); setMessage(''); }} className="text-xs text-gray-500 hover:text-indigo-600">
+                                    He oblidat la contrasenya
+                                </button>
+                            </div>
+                        )}
+
+                        <button onClick={()=>{ 
+                            if (isReset) { setIsReset(false); setError(''); setMessage(''); }
+                            else { setIsLogin(!isLogin); setError(''); setMessage(''); }
+                        }} className="w-full mt-4 text-sm text-indigo-600 hover:underline">
+                            {isReset ? 'Tornar al Login' : (isLogin ? 'Crear compte' : 'Ja tinc compte')}
+                        </button>
                     </div>
                 </div>
             );
@@ -593,7 +638,12 @@
                                 <div className="bg-indigo-600 p-2 rounded-lg"><Coins className="text-white w-5 h-5" /></div>
                                 <h1 className="text-lg font-bold">CentimOn</h1>
                             </div>
-                            <button onClick={() => signOut(auth)} className="text-sm font-bold text-gray-500"><LogOut className="w-5 h-5" /></button>
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs text-gray-500">{user.email}</span>
+                                <button onClick={() => signOut(auth)} className="text-gray-500 hover:text-red-600">
+                                    <LogOut className="w-5 h-5" />
+                                </button>
+                            </div>
                         </header>
                         
                         <AccountsBar 
